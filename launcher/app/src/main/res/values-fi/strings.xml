@@ -16,7 +16,7 @@
     <string name="np_play_pause">Toista tai keskeytä</string>
     <string name="np_next">Seuraava</string>
     <string name="key_service_label">Cosy Home -kaukosäätimen painikkeet</string>
-    <string name="key_service_description">Avaa SmartTuben kaukosäätimen YouTube-painikkeesta. Lukee vain käynnistimen asetuksissa luetellut painikkeet.</string>
+    <string name="key_service_description">Avaa SmartTuben kaukosäätimen YouTube-painikkeesta ja sulkee näytönsäästäjän alas-painikkeella. Lukee vain käynnistimen asetuksissa luetellut painikkeet ja alas-painikkeen.</string>
 
     <!-- Sääolot (Open-Meteon WMO-koodit). -->
     <string name="wx_clear">Selkeää</string>

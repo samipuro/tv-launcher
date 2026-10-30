@@ -17,7 +17,7 @@
     <string name="np_play_pause">Play or pause</string>
     <string name="np_next">Next</string>
     <string name="key_service_label">Cosy Home remote buttons</string>
-    <string name="key_service_description">Opens SmartTube from the remote\'s YouTube button. It only reads the buttons listed in the launcher\'s settings.</string>
+    <string name="key_service_description">Opens SmartTube from the remote\'s YouTube button and closes the screensaver on Down. It only reads the buttons listed in the launcher\'s settings and Down.</string>
 
     <!-- Weather conditions (WMO codes from Open-Meteo). -->
     <string name="wx_clear">Clear</string>
