@@ -29,8 +29,8 @@ android {
         applicationId 'com.cosyhome.tv'
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName '1.0'
+        versionCode 2
+        versionName '1.0.2'
 
         ['location.name', 'location.latitude', 'location.longitude', 'dock', 'pinned', 'hidden',
          'live_tv_package', 'usb_package', 'ambilight_action', 'app_keys'].each { key ->
