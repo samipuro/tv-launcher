@@ -34,10 +34,19 @@ $pkgs = Get-Content $List | ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
 
 & $adb connect $dev | Out-Null
 
-# Setup wizard and stock launcher first, so the TV always has a Home.
-Run @('pm', 'enable', $stock)
-Run @('pm', 'enable', 'com.google.android.tungsten.setupwraith')
-Run @('cmd', 'package', 'set-home-activity', "$stock/.home.HomeActivity")
+# Setup wizard and stock launcher first, so the TV always has a Home. Only what the baseline had on:
+# turning on a launcher the TV had off before this setup is not a restore (cleanyourtv #1714).
+$setup = 'com.google.android.tungsten.setupwraith'
+$stockWasOn = $baseDisabled -notcontains $stock
+if ($stockWasOn) {
+    Run @('pm', 'enable', $stock)
+} elseif ($RemoveLauncher) {
+    throw "refusing -RemoveLauncher: the baseline has $stock disabled, so removing Cosy Home would leave the TV with no Home. Run without -RemoveLauncher. Nothing was changed."
+} else {
+    Write-Output "keep disabled  $stock (disabled before this setup; Cosy Home stays Home)"
+}
+if ($baseDisabled -notcontains $setup) { Run @('pm', 'enable', $setup) }
+if ($stockWasOn) { Run @('cmd', 'package', 'set-home-activity', "$stock/.home.HomeActivity") }
 
 # Re-enable the debloat list, one pm call each.
 foreach ($p in $pkgs) {
