@@ -12,6 +12,7 @@ The Android TV home screen used on this TV. It is a fork of [cosy-home-tv](https
 - **Finnish translation** (`values-fi`), and the time is formatted in the TV language's own style (14.12 in Finnish, 14:12 in English).
 - **Dock:** centred, TV first, a glow in the app's own colour on the focused tile; apps-grid tiles get a crisp border instead.
 - **Sony settings:** Live TV `com.sony.dtv.tvx`, USB `com.sony.dtv.smartmediaapp`, no Ambilight chip.
+- **The real moon:** at night the moon shows its real phase (lit on the right while waxing, on the left while waning, nothing at new moon) and is only drawn while it is above the horizon at `location.*` (`Moon.java`, offline, about a degree: a few minutes on moonrise and moonset). With no location set it is always shown. Preview with `--es moon <new|crescent|first|gibbous|full|last|waning>` (`auto` goes back to live).
 - **Temperature unit:** `weather.temperature_unit=fahrenheit` shows °F; anything else is Celsius. The reading is stored in Celsius and converted when shown, so switching needs no new fetch.
 - **From upstream cosy-home-tv (Oct 2026):** the moon's crescent is cut out of the disc instead of painted over in sky colour; banners beyond the dock and first grid row are decoded on a background thread and cached until the app updates; tiles and input chips are only rebuilt when apps or inputs changed; the package receiver is registered once. Gradle wrapper 9.7.1.
 - Removed: the per-minute pixel shift (the TV's screensaver and panel protection handle OLED care).
@@ -25,4 +26,4 @@ scripts\launcher-install.ps1            # build, install, switch the remote-butt
 scripts\launcher-install.ps1 -TakeHome  # first time: also make it the Home screen and disable the Google TV launcher
 ```
 
-Preview a scene: `adb shell am start -n com.cosyhome.tv/.HomeActivity --es phase dusk --es weather rain` (`auto` for both goes back to live).
+Preview a scene: `adb shell am start -n com.cosyhome.tv/.HomeActivity --es phase night --es weather clear --es moon full` (`auto` for each goes back to live).

@@ -98,6 +98,8 @@ public class HomeActivity extends Activity implements SceneView.Listener {
     /** Demo extras for screenshots, with a weather preview: `--ei temp -5` for the weather line and `--es clock 22:40` for the clock. */
     private static Integer forcedTemp;
     private static String forcedClock;
+    /** Preview the moon from adb: `--es moon full` (new, crescent, first, gibbous, full, last, waning; "auto" clears it). Shown even when the real moon is down. */
+    private static Integer forcedMoon;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable minuteTick = new Runnable() {
@@ -333,8 +335,9 @@ public class HomeActivity extends Activity implements SceneView.Listener {
     }
 
     private static void readPhaseOverride(Intent intent) {
-        // The weather preview rides on the same intent as the phase preview.
+        // The weather and moon previews ride on the same intent as the phase preview.
         readWeatherOverride(intent);
+        readMoonOverride(intent);
         String p = intent == null ? null : intent.getStringExtra("phase");
         if (p == null) return;
         try {
@@ -365,6 +368,25 @@ public class HomeActivity extends Activity implements SceneView.Listener {
             case "snow": forcedWeather = 73; break;
             case "storm": forcedWeather = 95; break;
             default: forcedWeather = null; forcedTemp = null; forcedClock = null; break;
+        }
+    }
+
+    // Purpose: read the adb moon preview name into a step of the moon's cycle; "auto" or unknown names clear it.
+    private static void readMoonOverride(Intent intent) {
+        String m = intent == null ? null : intent.getStringExtra("moon");
+        if (m == null) return;
+
+        // Eighths of the cycle: new, waxing crescent, first quarter, waxing gibbous, full, then waning.
+        int eighth = SceneView.MOON_STEPS / 8;
+        switch (m.toLowerCase(Locale.ROOT)) {
+            case "new": forcedMoon = 0; break;
+            case "crescent": forcedMoon = eighth; break;
+            case "first": forcedMoon = 2 * eighth; break;
+            case "gibbous": forcedMoon = 3 * eighth; break;
+            case "full": forcedMoon = 4 * eighth; break;
+            case "last": forcedMoon = 6 * eighth; break;
+            case "waning": forcedMoon = 7 * eighth; break;
+            default: forcedMoon = null; break;
         }
     }
 
@@ -485,6 +507,17 @@ public class HomeActivity extends Activity implements SceneView.Listener {
         headerTime.setText(hm);
         date.setText(new SimpleDateFormat(DateFormat.getBestDateTimePattern(locale, "EEEEdMMMM"), locale).format(now));
         scene.setPhase(forcedPhase != null ? forcedPhase : phaseAt(now.getTime()));
+        showMoon(now.getTime());
+    }
+
+    // Purpose: the real moon's phase, shown only while it is above the horizon here (always, with no location set).
+    private void showMoon(long now) {
+        if (forcedMoon != null) {
+            scene.setMoon(forcedMoon, true);
+            return;
+        }
+        int step = (int) Math.round(Moon.phase(now) / (2 * Math.PI) * SceneView.MOON_STEPS);
+        scene.setMoon(step, !located || Moon.up(now, lat, lon));
     }
 
     /**

@@ -7,6 +7,7 @@ import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.RectF;
 import android.graphics.RadialGradient;
 import android.graphics.Shader;
 import android.os.SystemClock;
@@ -82,6 +83,12 @@ public class SceneView extends View {
     private Sky sky = Sky.PARTLY;
     /** Number of rain drops or snowflakes drawn per frame. */
     private int precip;
+    /** Steps the moon's cycle is drawn in: 64 is about eleven hours each, so the still is redrawn rarely. */
+    static final int MOON_STEPS = 64;
+    /** The moon's phase as a step of {@link #MOON_STEPS}: 0 new, 32 full. */
+    private int moonStep = 4;
+    /** Whether the moon is above the horizon here. */
+    private boolean moonUp = true;
     private Bitmap still;
     private Bitmap blurred;
     private Listener listener;
@@ -141,6 +148,16 @@ public class SceneView extends View {
         phase = p;
         pal = p == Phase.DAWN ? DAWN : p == Phase.DAY ? DAY : p == Phase.DUSK ? DUSK : NIGHT;
         rebuild();
+    }
+
+    // Purpose: show the real moon: its phase as a step of MOON_STEPS, and whether it is up.
+    void setMoon(int step, boolean up) {
+        step = Math.floorMod(step, MOON_STEPS);
+        if (step == moonStep && up == moonUp) return;
+        moonStep = step;
+        moonUp = up;
+        // The moon is only drawn at night, so other phases keep their still.
+        if (still != null && phase == Phase.NIGHT) rebuild();
     }
 
     // Purpose: show the weather outside in the scene, from a WMO weather code (-1 when unknown).
@@ -254,15 +271,7 @@ public class SceneView extends View {
                 glowDisc(c, 820, 706, 80, 0xFFFFC27E, 0xFFFFB46B, 0.45f);
                 break;
             case NIGHT:
-                glow(c, 1480, 230, 54, 0xFFF1EAD8, 0.16f);
-                // The crescent: the moon's disc less an offset shadow disc, so the unlit part
-                // never reaches past the moon's edge.
-                Path moon = new Path();
-                moon.addCircle(1480, 230, 54, Path.Direction.CW);
-                Path shadow = new Path();
-                shadow.addCircle(1502, 216, 48, Path.Direction.CW);
-                moon.op(shadow, Path.Op.DIFFERENCE);
-                fill(c, moon, 0xFFF1EAD8);
+                if (moonUp) drawMoon(c, 1480, 230, 54);
                 break;
         }
 
@@ -346,6 +355,43 @@ public class SceneView extends View {
                 Math.round(Color.red(a) + (Color.red(b) - Color.red(a)) * t),
                 Math.round(Color.green(a) + (Color.green(b) - Color.green(a)) * t),
                 Math.round(Color.blue(a) + (Color.blue(b) - Color.blue(a)) * t));
+    }
+
+    /**
+     * The moon in its phase, as seen from the northern hemisphere: lit on the right while waxing, on
+     * the left while waning. The lit part is the half disc on that side, less (crescent) or plus
+     * (gibbous) the half ellipse of the terminator. Near new moon nothing is drawn.
+     */
+    private void drawMoon(Canvas c, float x, float y, float r) {
+        double angle = 2 * Math.PI * moonStep / MOON_STEPS;
+        float lit = (float) Moon.illuminated(angle);
+        if (lit < 0.03f) return;
+        int color = 0xFFF1EAD8;
+        glow(c, x, y, r, color, 0.08f + 0.14f * lit);
+
+        // Earthshine: the dark part of the disc is faintly visible.
+        fill(c, disc(x, y, r), 0x1FF1EAD8);
+
+        Path moon;
+        if (lit > 0.97f) {
+            moon = disc(x, y, r);
+        } else {
+            boolean waxing = angle < Math.PI;
+            moon = new Path();
+            moon.addArc(new RectF(x - r, y - r, x + r, y + r), waxing ? -90 : 90, 180);
+            moon.close();
+            float rx = r * (float) Math.abs(Math.cos(angle));
+            Path terminator = new Path();
+            terminator.addOval(new RectF(x - rx, y - r, x + rx, y + r), Path.Direction.CW);
+            moon.op(terminator, lit < 0.5f ? Path.Op.DIFFERENCE : Path.Op.UNION);
+        }
+        fill(c, moon, color);
+    }
+
+    private static Path disc(float x, float y, float r) {
+        Path p = new Path();
+        p.addCircle(x, y, r, Path.Direction.CW);
+        return p;
     }
 
     /** The soft halo around a disc of radius r, without the disc itself. */
