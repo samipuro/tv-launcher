@@ -29,12 +29,12 @@ android {
         applicationId 'com.cosyhome.tv'
         minSdk 26
         targetSdk 34
-        versionCode 3
-        versionName '1.1.0'
+        versionCode 4
+        versionName '1.1.1'
 
         ['location.name', 'location.latitude', 'location.longitude', 'weather.temperature_unit',
          'dock', 'pinned', 'hidden',
-         'live_tv_package', 'usb_package', 'ambilight_action', 'app_keys'].each { key ->
+         'live_tv_package', 'usb_package', 'ambilight_action', 'app_keys', 'power_on_home'].each { key ->
             resValue 'string', key.replace('.', '_'), resString(settings.getProperty(key, ''))
         }
     }

@@ -436,6 +436,7 @@ public class HomeActivity extends Activity implements SceneView.Listener {
     protected void onPause() {
         super.onPause();
         resumed = false;
+        dropMoving();   // leaving Home puts a picked-up tile down where it is
         cancelHoldOk();
         if (tileMenu != null) tileMenu.dismiss();
         handler.removeCallbacks(minuteTick);
@@ -585,7 +586,9 @@ public class HomeActivity extends Activity implements SceneView.Listener {
 
         // Six tiles fit at full size; a seventh shrinks them a little so the centred dock keeps its margins.
         boolean crowded = docked.size() > 6;
-        int dockW = dp(crowded ? 104 : 115), dockH = dp(crowded ? 59 : 65), dockGap = dp(crowded ? 12 : 15);
+        int dockW = dp(crowded ? 104 : 115), dockH = dp(crowded ? 59 : 65);
+        dockGap = dp(crowded ? 12 : 15);
+        movingTile = null;   // a move in progress ends with the tiles it was moving
         for (int i = 0; i < docked.size(); i++) {
             final int index = i;
             Tile t = new Tile(this, docked.get(i), DOCK_REST_ALPHA, true);
@@ -675,6 +678,7 @@ public class HomeActivity extends Activity implements SceneView.Listener {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (movingTile != null && moveKey(event)) return true;
         if (holdOk(event)) return true;
         return super.dispatchKeyEvent(event);
     }
@@ -762,6 +766,11 @@ public class HomeActivity extends Activity implements SceneView.Listener {
         });
         tileMenu = popup;
 
+        // Move: dock tiles only, and only when there is another place to go (Live TV keeps the first one).
+        int movable = dock.getChildCount() - (dockApps.contains(liveTvPkg) ? 1 : 0);
+        if (!inGrid && docked && !pinned && movable > 1) {
+            addMenuRow(rows, popup, R.string.tile_move, true, () -> startMove(tile));
+        }
         if (docked && !pinned) {
             addMenuRow(rows, popup, R.string.tile_remove_from_dock, true, () -> editDock(pkg, false));
         } else if (!docked) {
@@ -829,6 +838,73 @@ public class HomeActivity extends Activity implements SceneView.Listener {
         rows.addView(row, lp);
     }
 
+    // ---- Move: a dock tile picked up from its menu --------------------------------------------------
+    // Left and Right carry it past its neighbours (never in front of Live TV), OK or Back puts it down and
+    // saves the order. Up and Down do nothing meanwhile; leaving Home puts it down where it is.
+
+    private Tile movingTile;
+    private boolean moveOkDown;
+    private int dockGap;
+
+    private void startMove(Tile tile) {
+        if (!tile.isAttachedToWindow() || tile.getParent() != dock) return;
+        movingTile = tile;
+        moveOkDown = false;
+        tile.requestFocus();
+        tile.animate().translationY(-dp(14)).setDuration(160).start();
+        Toast.makeText(this, R.string.move_hint, Toast.LENGTH_SHORT).show();
+    }
+
+    // Purpose: the keys while a tile is picked up; true when the key is used here.
+    private boolean moveKey(KeyEvent e) {
+        boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
+        int code = e.getKeyCode();
+        if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            if (down) shiftMoving(code == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
+            return true;
+        }
+        if (code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN) return true;
+        if (isOkKey(code) || code == KeyEvent.KEYCODE_BACK) {
+            // Put down on the release of a press that started during the move.
+            if (down) {
+                if (e.getRepeatCount() == 0) moveOkDown = true;
+            } else if (moveOkDown) {
+                dropMoving();
+            }
+            return true;
+        }
+        return false;
+    }
+
+    // Purpose: swap the picked-up tile with its neighbour; the tile itself keeps focus.
+    private void shiftMoving(int step) {
+        int from = dock.indexOfChild(movingTile), to = from + step;
+        int first = ((Tile) dock.getChildAt(0)).app.pkg.equals(liveTvPkg) ? 1 : 0;
+        if (from < 0 || to < first || to >= dock.getChildCount()) return;
+        View neighbour = dock.getChildAt(to);
+        dock.removeViewAt(to);
+        dock.addView(neighbour, from);
+        for (int i = 0; i < dock.getChildCount(); i++) {
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) dock.getChildAt(i).getLayoutParams();
+            lp.setMarginStart(i > 0 ? dockGap : 0);
+        }
+        dock.requestLayout();
+        lastDock = to;
+    }
+
+    // Purpose: put the picked-up tile down and keep the new order.
+    private void dropMoving() {
+        Tile tile = movingTile;
+        movingTile = null;
+        if (tile == null) return;
+        tile.animate().translationY(0f).setDuration(160).start();
+        List<String> next = new ArrayList<>();
+        for (int i = 0; i < dock.getChildCount(); i++) next.add(((Tile) dock.getChildAt(i)).app.pkg);
+        lastDock = Math.max(0, next.indexOf(tile.app.pkg));
+        if (next.equals(dockApps)) return;
+        saveDock(Dock.arrange(next, liveTvPkg), tile.app.pkg);
+    }
+
     // Purpose: add an app to the end of the dock or take it off, save it, rebuild the tiles and keep focus on that app.
     private void editDock(String pkg, boolean add) {
         // Docked apps that are no longer installed have no tile; they drop out of the saved dock here.
@@ -837,9 +913,16 @@ public class HomeActivity extends Activity implements SceneView.Listener {
         int index = next.indexOf(pkg);
         if (add) next.add(pkg);
         else next.remove(pkg);
-        next = Dock.arrange(next, liveTvPkg);
+        if (!appsOpen) lastDock = Math.max(0, index);
+        saveDock(Dock.arrange(next, liveTvPkg), pkg);
+    }
+
+    // Purpose: save an edited dock, rebuild the tiles and keep focus on the app that was edited.
+    private void saveDock(List<String> next, String pkg) {
         if (!Dock.save(this, configuredDock, next)) {
             Toast.makeText(this, R.string.dock_not_saved, Toast.LENGTH_LONG).show();
+            loadApps();   // back to the saved order
+            restoreFocus();
             return;
         }
         dockApps = next;
@@ -851,8 +934,6 @@ public class HomeActivity extends Activity implements SceneView.Listener {
                     break;
                 }
             }
-        } else {
-            lastDock = Math.max(0, index);
         }
         restoreFocus();
     }

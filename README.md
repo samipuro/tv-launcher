@@ -22,6 +22,7 @@ My living-room Sony TV, debloated and given a calm, custom home screen that show
   - status icons top right (inputs, network, settings);
   - the moon in its real phase, only while it is above the horizon;
   - a centred dock of up to 7 apps with a glow on the focused app, editable on the TV (hold OK on a tile);
+  - Home every time the TV is switched on;
   - an apps and inputs panel.
 - **Remote:** the **YouTube** button opens **SmartTube**; the other buttons work as before.
 - **OLED care:** Google's Ambient mode screensaver (moving photos) after 5 idle minutes, plus the TV's own Pixel Shift and Panel Refresh.
@@ -78,15 +79,16 @@ When music plays in any app (Spotify, SmartTube, YouTube Music ...), a small car
 
 ## Change the launcher
 
-Current version: **1.1.0** ([versions](launcher/README.md#versions)). Settings: [launcher/cosy.properties](launcher/cosy.properties). After a change: `scripts\launcher-install.ps1`. More in [launcher/README.md](launcher/README.md).
+Current version: **1.1.1** ([versions](launcher/README.md#versions)). Settings: [launcher/cosy.properties](launcher/cosy.properties). After a change: `scripts\launcher-install.ps1`. More in [launcher/README.md](launcher/README.md).
 
 - **Dock order:** `dock=` (package names, at most seven, TV always first). The apps list starts with the same apps, then `pinned=`, then the rest alphabetically.
-- **On the TV:** hold OK on a tile for its menu: Add to / Remove from dock, App info, Uninstall. A dock edited on the TV is kept until `dock=` changes; `scripts\backup.ps1` saves it as `launcher-dock.txt`, so it can be copied into `dock=`.
+- **On the TV:** hold OK on a tile for its menu: Move (dock only: ◀ ▶, then OK), Add to / Remove from dock, App info, Uninstall. A dock edited on the TV is kept until `dock=` changes; `scripts\backup.ps1` saves it as `launcher-dock.txt`, so it can be copied into `dock=`.
 - **Hidden tiles:** `hidden=` (apps stay installed).
 - **Location:** `location.name`, `location.latitude`, `location.longitude`.
 - **Temperature:** `weather.temperature_unit=fahrenheit` for °F (default Celsius).
 - **Scene:** [SceneView.java](launcher/app/src/main/java/com/cosyhome/tv/SceneView.java), with palettes per time of day and the weather effects.
 - **Remote buttons:** `app_keys=196:org.smarttube.stable` (YouTube button -> SmartTube), through the launcher's accessibility service.
+- **Power-on:** `power_on_home=true` opens Home every time the TV is switched on, instead of the last app or input; a key pressed first, or sound already playing, cancels it.
 
 ## Use the launcher on another TV
 

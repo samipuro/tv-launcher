@@ -2,7 +2,14 @@ package com.cosyhome.tv;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.media.AudioManager;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.util.SparseArray;
 import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
@@ -15,6 +22,10 @@ import android.view.accessibility.AccessibilityEvent;
  * Also closes Google's Ambient mode screensaver on DOWN. Every other key closes it, but DOWN opens
  * its content panel, which loads from the disabled Google TV home and only shows "Couldn't load
  * content".
+ *
+ * With power_on_home=true, Home comes up each time the TV is switched on, whatever the TV brought back (the last
+ * app or HDMI input), unless a key is pressed first or something is already playing sound (a cast that woke the
+ * TV). Same idea as cleanyourtv's power_on_home_always.
  */
 public class KeyService extends AccessibilityService {
 
@@ -27,6 +38,16 @@ public class KeyService extends AccessibilityService {
 
     // The DOWN press closed Ambient mode, so its release is swallowed too.
     private boolean swallowDownRelease;
+
+    /** After the screen comes on, how long the TV gets to bring back its last app or input before Home. */
+    private static final long POWER_ON_DELAY_MS = 1500L;
+    /** A service bound this soon after boot counts as a power-on too. */
+    private static final long BOOT_WINDOW_MS = 3 * 60_000L;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable homeAtPowerOn = this::homeAtPowerOn;
+    private BroadcastReceiver screenOn;
+    // Armed at power-on, disarmed by the first key: from then on the TV is the user's.
+    private boolean powerOnArmed;
 
     // Purpose: read the keycode:package pairs when the service is switched on.
     @Override
@@ -43,11 +64,62 @@ public class KeyService extends AccessibilityService {
             } catch (NumberFormatException ignored) {
             }
         }
+        setUpPowerOnHome();
+    }
+
+    // Purpose: with power_on_home=true, arm Home for every screen-on, and for this boot when the service binds early.
+    private void setUpPowerOnHome() {
+        if (!"true".equalsIgnoreCase(getString(R.string.power_on_home).trim())) return;
+        if (screenOn == null) {
+            screenOn = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    armPowerOnHome();
+                }
+            };
+            registerReceiver(screenOn, new IntentFilter(Intent.ACTION_SCREEN_ON));
+        }
+        if (SystemClock.elapsedRealtime() < BOOT_WINDOW_MS) armPowerOnHome();
+    }
+
+    private void armPowerOnHome() {
+        powerOnArmed = true;
+        handler.removeCallbacks(homeAtPowerOn);
+        handler.postDelayed(homeAtPowerOn, POWER_ON_DELAY_MS);
+    }
+
+    // Purpose: open Home, unless a key was pressed since power-on or sound is already playing.
+    private void homeAtPowerOn() {
+        if (!powerOnArmed) return;
+        powerOnArmed = false;
+        AudioManager audio = getSystemService(AudioManager.class);
+        if (audio != null && audio.isMusicActive()) return;
+        Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(getPackageName())
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(home);
+        } catch (ActivityNotFoundException | SecurityException ignored) {
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        handler.removeCallbacks(homeAtPowerOn);
+        if (screenOn != null) unregisterReceiver(screenOn);
+        screenOn = null;
+        super.onDestroy();
     }
 
     // Purpose: swallow both presses of a mapped button and open its app on the first press.
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
+        // The first key after power-on (not the power key that woke the TV) hands the TV to the user.
+        if (powerOnArmed && event.getAction() == KeyEvent.ACTION_DOWN
+                && event.getKeyCode() != KeyEvent.KEYCODE_POWER && event.getKeyCode() != KeyEvent.KEYCODE_WAKEUP
+                && event.getKeyCode() != KeyEvent.KEYCODE_TV_POWER) {
+            powerOnArmed = false;
+            handler.removeCallbacks(homeAtPowerOn);
+        }
         if (closeAmbient(event)) return true;
 
         String pkg = keys.get(event.getKeyCode());
