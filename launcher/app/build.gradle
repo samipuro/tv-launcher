@@ -29,8 +29,8 @@ android {
         applicationId 'com.cosyhome.tv'
         minSdk 26
         targetSdk 34
-        versionCode 2
-        versionName '1.0.2'
+        versionCode 3
+        versionName '1.1.0'
 
         ['location.name', 'location.latitude', 'location.longitude', 'weather.temperature_unit',
          'dock', 'pinned', 'hidden',
