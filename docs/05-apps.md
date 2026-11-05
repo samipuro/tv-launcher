@@ -18,7 +18,7 @@ Apps on the TV on 2026-10-21 that are not part of the firmware, and where to get
 | Disney+ | `com.disney.disneyplus` | 26.18.0 | Play Store |
 | Old MTV app (disabled) | `fi.mtv.svod` | 1.0.56 | Play Store (obsolete) |
 | Netflix, Prime Video, YouTube | preinstalled | - | Firmware / Play Store |
-| Cosy Home (launcher) | `com.cosyhome.tv` | 1.0 | Built from [../launcher](../launcher) |
+| Cosy Home (launcher) | `com.cosyhome.tv` | 1.1.0 (3) | Built from [../launcher](../launcher) |
 
 ## Installing an APK from the PC (fallback)
 

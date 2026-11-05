@@ -20,7 +20,8 @@ My living-room Sony TV, debloated and given a calm, custom home screen that show
   - a big clock, the date and the weather line in the TV's language;
   - a **now playing** card with media controls;
   - status icons top right (inputs, network, settings);
-  - a centred 7-app dock with a glow on the focused app;
+  - the moon in its real phase, only while it is above the horizon;
+  - a centred dock of up to 7 apps with a glow on the focused app, editable on the TV (hold OK on a tile);
   - an apps and inputs panel.
 - **Remote:** the **YouTube** button opens **SmartTube**; the other buttons work as before.
 - **OLED care:** Google's Ambient mode screensaver (moving photos) after 5 idle minutes, plus the TV's own Pixel Shift and Panel Refresh.
@@ -52,7 +53,7 @@ Every scene works at each time of day: **dawn** (40 min before to 50 min after s
 
 | Scene | Open-Meteo (WMO) codes | Weather line (fi / en) | What the picture does |
 |---|---|---|---|
-| Clear | 0 | Selkeää / Clear | No clouds; sun or crescent moon; full stars at night |
+| Clear | 0 | Selkeää / Clear | No clouds; sun or the moon in its phase; full stars at night |
 | Partly cloudy | 1, 2 | Enimmäkseen selkeää, Puolipilvistä / Mostly clear, Partly cloudy | Drifting white clouds by day; stars dimmed at night |
 | Cloudy | 3 | Pilvistä / Overcast | Grey sky, extra cloud layer, sun only a faint glow, no moon or stars |
 | Fog | 45, 48 | Sumua / Fog | Washed-out sky, thick fog banks over the valley, faint clouds |
@@ -77,12 +78,13 @@ When music plays in any app (Spotify, SmartTube, YouTube Music ...), a small car
 
 ## Change the launcher
 
-Settings: [launcher/cosy.properties](launcher/cosy.properties). After a change: `scripts\launcher-install.ps1`. More in [launcher/README.md](launcher/README.md).
+Current version: **1.1.0** ([versions](launcher/README.md#versions)). Settings: [launcher/cosy.properties](launcher/cosy.properties). After a change: `scripts\launcher-install.ps1`. More in [launcher/README.md](launcher/README.md).
 
 - **Dock order:** `dock=` (package names, at most seven, TV always first). The apps list starts with the same apps, then `pinned=`, then the rest alphabetically.
 - **On the TV:** hold OK on a tile for its menu: Add to / Remove from dock, App info, Uninstall. A dock edited on the TV is kept until `dock=` changes; `scripts\backup.ps1` saves it as `launcher-dock.txt`, so it can be copied into `dock=`.
 - **Hidden tiles:** `hidden=` (apps stay installed).
 - **Location:** `location.name`, `location.latitude`, `location.longitude`.
+- **Temperature:** `weather.temperature_unit=fahrenheit` for °F (default Celsius).
 - **Scene:** [SceneView.java](launcher/app/src/main/java/com/cosyhome/tv/SceneView.java), with palettes per time of day and the weather effects.
 - **Remote buttons:** `app_keys=196:org.smarttube.stable` (YouTube button -> SmartTube), through the launcher's accessibility service.
 

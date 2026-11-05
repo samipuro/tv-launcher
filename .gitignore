@@ -14,7 +14,7 @@ local.properties
 *.iml
 .idea/
 
-# App APKs stay local only (apps/README.md lists versions and checksums)
+# App APKs stay out of git (docs/05-apps.md lists sources; launcher APKs go to GitHub Releases)
 *.apk
 *.apkm
 *.apks

@@ -28,3 +28,22 @@ scripts\launcher-install.ps1 -TakeHome  # first time: also make it the Home scre
 ```
 
 Preview a scene: `adb shell am start -n com.cosyhome.tv/.HomeActivity --es phase night --es weather clear --es moon full` (`auto` for each goes back to live).
+
+## Versions
+
+| Version | Changes |
+|---|---|
+| 1.1.0 (3) | The real moon; tile menu on hold OK with an editable dock; °F option; upstream speed-ups; Gradle 9.7.1 |
+| 1.0.2 (2) | Down closes Ambient mode instead of its broken content panel |
+| 1.0 (1) | First version on this TV |
+
+## Release an APK
+
+Built APKs are not committed. After a version works on the TV, attach it to a GitHub release (from the repo root):
+
+```powershell
+Copy-Item launcher\app\build\outputs\apk\release\app-release.apk $env:TEMP\cosy-home-1.1.0.apk
+gh release create v1.1.0 $env:TEMP\cosy-home-1.1.0.apk --title "Cosy Home 1.1.0" --notes "Built with this repo's cosy.properties (Vantaa, Sony packages). Other TVs: build from source."
+```
+
+The APK has this TV's settings built in and is signed with the PC's debug key (see [signing key](../docs/01-prerequisites.md#signing-key)). To install a downloaded one, copy it to `app\build\outputs\apk\release\app-release.apk` and run `scripts\launcher-install.ps1 -NoBuild`, which also switches the remote-button service and media access back on.
