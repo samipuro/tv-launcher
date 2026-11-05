@@ -104,6 +104,14 @@ For the same Sony TV after a reset, run these from the repo root:
 7. Select Google Ambient mode as the screensaver on the TV. Run `adb shell settings put system screen_off_timeout 300000` for the saved 5-minute delay and `adb shell settings put global stay_on_while_plugged_in 0` so Stay awake cannot prevent it. Check the screensaver starts while idle.
 8. Save the result with `scripts\backup.ps1 -Label after-setup`, then [close ADB](docs/04-close-adb.md).
 
+## Known quirks
+
+Side effects of running without the Google TV launcher (`launcherx`) and the setup wizard (`setupwraith`). None of them breaks anything in daily use.
+
+- **Down in Ambient mode said "Sisällön lataaminen epäonnistui" / "Couldn't load content".** Down opens Ambient mode's content panel, which loads from `launcherx`. Since launcher 1.0.2 the remote-button service turns Down into Back while Ambient mode is showing, so it closes the screensaver like every other key.
+- **Ambient mode > Google Photos > Select albums closes at once or says "Unable to load content".** The album picker is `launcherx`'s and also needs `setupwraith`; the slideshow itself keeps playing. To change the albums: `adb shell pm enable com.google.android.apps.tv.launcherx` and `adb shell pm enable com.google.android.tungsten.setupwraith`, then `adb shell am force-stop com.google.android.apps.tv.launcherx`, pick the albums under Settings > Screen saver > Ambient mode, then disable both again (`scripts\disable.ps1 debloat\debloat.txt`) and give Home back to Cosy Home (`scripts\launcher-install.ps1 -TakeHome`). While `launcherx` is on it owns Home. Reported upstream on a Sony XR-77A80L with this firmware build ([TROUBLESHOOTING](docs/upstream/TROUBLESHOOTING.md)).
+- **logcat repeats `Failed to find provider info for com.google.android.tungsten.setupwraith` about twice a second.** Sony's `com.sony.dtv.sonysystemservice` polls the disabled wizard every 500 ms, roughly 7,000 lines an hour. Harmless: nothing on screen changes and idle CPU still dropped after the debloat. Turning the wizard back on is worse, as its recovery screen takes Home. Leave it ([cleanyourtv #2853](https://github.com/Gathin23/cleanyourtv/issues/2853), seen on a Sony XR-77A80L; check this TV with `adb logcat -d | findstr setupwraith`).
+
 ## After a Sony firmware update
 
 An update can re-enable disabled packages, give Home back to the Google TV launcher, switch off the remote-button service and add new preloads. Enable debugging, connect, and run `scripts\check.ps1`. It only reads: it lists what drifted (exit code 1) and any packages not in the after-setup backup, and names the script that fixes each item (`disable.ps1`, `launcher-install.ps1 -TakeHome`, `dns.ps1`). Review new packages before adding them to the list, then [close ADB](docs/04-close-adb.md) again.
@@ -124,7 +132,7 @@ before.png, after.png  the home screen before and after
 backup/        TV state before any change (packages, settings, getprop; device IDs redacted)
 debloat/       the debloat list, the log of what was disabled, and the Sony reference list
 docs/          setup checklist, PC and TV setup, the original prompt, closing ADB, apps list
-docs/upstream/ troubleshooting docs from cleanyourtv
+docs/upstream/ troubleshooting and remote-help docs from cleanyourtv v3.4.0 (links inside point to that repo)
 launcher/      Cosy Home launcher source and its settings
 licenses/      third-party licences
 scripts/       PowerShell scripts for this TV: backup, disable, check, restore, DNS, launcher install, screenshots
