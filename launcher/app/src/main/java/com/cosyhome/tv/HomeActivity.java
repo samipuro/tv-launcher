@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.ChangedPackages;
 import android.media.tv.TvContract;
 import android.media.tv.TvInputInfo;
 import android.media.tv.TvInputManager;
@@ -84,6 +85,9 @@ public class HomeActivity extends Activity implements SceneView.Listener {
     private float density;
 
     private boolean appsOpen;
+    private boolean resumed;
+    /** The package sequence the tiles were built at, or -1 before the first build. */
+    private int packageSequence = -1;
     /** Survives the activity being recreated while an app is open; resets only with the process. */
     private static int lastDock = 0;
     private static int lastGrid = 0;
@@ -121,6 +125,8 @@ public class HomeActivity extends Activity implements SceneView.Listener {
             // Updates send REMOVED then ADDED; wait for the new APK instead of dropping the tile.
             if (Intent.ACTION_PACKAGE_REMOVED.equals(intent.getAction())
                     && intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return;
+            // Behind an app, leave it to onResume, which asks PackageManager what changed.
+            if (!resumed) return;
             loadApps();
             restoreFocus();
         }
@@ -183,6 +189,25 @@ public class HomeActivity extends Activity implements SceneView.Listener {
         weather.setText(weatherLine(Weather.cached(this)));
         readPhaseOverride(getIntent());
         applyWeather();
+
+        // Registered once rather than in onResume: there the call waits about 50 ms for the
+        // ActivityManager lock, which the system holds while it switches activities.
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_PACKAGE_ADDED);
+        filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        filter.addAction(Intent.ACTION_PACKAGE_CHANGED);
+        filter.addDataScheme("package");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(packageReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(packageReceiver, filter);
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unregisterReceiver(packageReceiver);
     }
 
     // Purpose: find the now playing card, wire its buttons and keys, and create the media session reader.
@@ -356,17 +381,12 @@ public class HomeActivity extends Activity implements SceneView.Listener {
     @Override
     protected void onResume() {
         super.onResume();
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(Intent.ACTION_PACKAGE_ADDED);
-        filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
-        filter.addAction(Intent.ACTION_PACKAGE_CHANGED);
-        filter.addDataScheme("package");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(packageReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            registerReceiver(packageReceiver, filter);
+        resumed = true;
+        // Between two resumes the package list almost never changes, so keep the tiles unless
+        // PackageManager reports a change. It returns null when nothing changed.
+        if (packageSequence < 0 || getPackageManager().getChangedPackages(packageSequence) != null) {
+            loadApps();
         }
-        loadApps();
         buildInputs();
         // Update the clock now, then on every minute boundary.
         tick();
@@ -384,7 +404,7 @@ public class HomeActivity extends Activity implements SceneView.Listener {
     @Override
     protected void onPause() {
         super.onPause();
-        unregisterReceiver(packageReceiver);
+        resumed = false;
         handler.removeCallbacks(minuteTick);
         handler.removeCallbacks(weatherTick);
         scene.setRunning(false);
@@ -506,7 +526,13 @@ public class HomeActivity extends Activity implements SceneView.Listener {
     // ---- tiles ------------------------------------------------------------------------------------
 
     private void loadApps() {
-        List<Apps.App> apps = Apps.load(this, dockApps, pinnedApps, hiddenApps);
+        // Read before the query, so a package that changes during the build triggers another one.
+        ChangedPackages changed = getPackageManager().getChangedPackages(Math.max(packageSequence, 0));
+        if (changed != null) packageSequence = changed.getSequenceNumber();
+        else if (packageSequence < 0) packageSequence = 0;
+        // The dock and the first grid row are on screen at once: their banners are decoded now, the rest
+        // on a background thread once the tiles are up.
+        List<Apps.App> apps = Apps.load(this, dockApps, pinnedApps, hiddenApps, dockApps.size() + GRID_COLUMNS);
         dock.removeAllViews();
         grid.removeAllViews();
 
@@ -567,6 +593,22 @@ public class HomeActivity extends Activity implements SceneView.Listener {
             });
             grid.addView(t, lp);
         }
+
+        // The deferred banners are decoded once the tiles are up, off the main thread: the panel opens
+        // without decoding on its first frame, and the tiles are ready before anyone scrolls to them.
+        grid.post(() -> {
+            List<Apps.LazyBanner> pending = new ArrayList<>();
+            for (Apps.App a : apps) {
+                if (a.banner instanceof Apps.LazyBanner) pending.add((Apps.LazyBanner) a.banner);
+            }
+            if (pending.isEmpty()) return;
+            Thread t = new Thread(() -> {
+                for (Apps.LazyBanner b : pending) b.resolve();
+                grid.postInvalidate();
+            }, "cosy-banners");
+            t.setPriority(Thread.MIN_PRIORITY);
+            t.start();
+        });
     }
 
     private void focusDock(int index) {
@@ -615,12 +657,24 @@ public class HomeActivity extends Activity implements SceneView.Listener {
 
     // ---- inputs -----------------------------------------------------------------------------------
 
-    /** Live TV, the HDMI ports in order, and USB media. Rebuilt on every resume. */
+    /** What the input chips were last built from, so a resume with the same inputs keeps them. */
+    private List<String> inputsKey = Collections.emptyList();
+
+    /**
+     * Live TV, the HDMI ports in order, and USB media. Checked on every resume and rebuilt only
+     * when they change: each chip costs about 4 ms to create.
+     */
     private void buildInputs() {
-        while (inputs.getChildCount() > 1) inputs.removeViewAt(1);
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        List<String> key = new ArrayList<>();
 
         Intent liveTv = getPackageManager().getLeanbackLaunchIntentForPackage(liveTvPkg);
-        if (liveTv != null) addInputChip(getString(R.string.live_tv), () -> open(liveTv));
+        if (liveTv != null) {
+            labels.add(getString(R.string.live_tv));
+            actions.add(() -> open(liveTv));
+            key.add(String.valueOf(liveTv.getComponent()));
+        }
 
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
         if (tim != null) {
@@ -635,12 +689,25 @@ public class HomeActivity extends Activity implements SceneView.Listener {
                 String label = l == null || l.length() == 0 ? "HDMI " + (i + 1) : l.toString();
                 if (!label.toUpperCase(Locale.ROOT).contains("HDMI")) label = "HDMI " + label;
                 final String id = info.getId();
-                addInputChip(label, () -> openInput(id));
+                labels.add(label);
+                actions.add(() -> openInput(id));
+                key.add(id);
             }
         }
 
         Intent usb = getPackageManager().getLeanbackLaunchIntentForPackage(usbPkg);
-        if (usb != null) addInputChip(getString(R.string.usb), () -> open(usb));
+        if (usb != null) {
+            labels.add(getString(R.string.usb));
+            actions.add(() -> open(usb));
+            key.add(String.valueOf(usb.getComponent()));
+        }
+
+        key.addAll(labels);
+        if (key.equals(inputsKey)) return;
+        inputsKey = key;
+
+        while (inputs.getChildCount() > 1) inputs.removeViewAt(1);
+        for (int i = 0; i < labels.size(); i++) addInputChip(labels.get(i), actions.get(i));
 
         // Bottom of the screen: Down stays put.
         for (int i = 1; i < inputs.getChildCount(); i++) {

@@ -16,7 +16,8 @@ import java.util.Locale;
 /**
  * Current temperature and conditions from Open-Meteo (free, no key). The last reading is kept
  * so the clock has something to show straight after a restart, before the network is up.
- * The reading is stored as numbers and turned into text on display, in the TV's language.
+ * The reading is stored as numbers (Celsius) and turned into text on display, in the TV's language
+ * and the unit set in weather.temperature_unit.
  */
 final class Weather {
 
@@ -31,12 +32,15 @@ final class Weather {
         SharedPreferences p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         if (!p.contains("code")) return "";
 
-        return text(ctx, p.getInt("temp", 0), p.getInt("code", -1));
+        // Readings stored before the unit setting existed only have the rounded value.
+        double celsius = p.contains("temp_c") ? p.getFloat("temp_c", 0f) : p.getInt("temp", 0);
+        return text(ctx, celsius, p.getInt("code", -1));
     }
 
     // Purpose: a reading as text, the temperature then the condition in the TV's language when the code is known.
-    static String text(Context ctx, int temp, int code) {
-        String text = temp + "°";
+    static String text(Context ctx, double celsius, int code) {
+        boolean fahrenheit = "fahrenheit".equalsIgnoreCase(ctx.getString(R.string.weather_temperature_unit).trim());
+        String text = fahrenheit ? Math.round(celsius * 9 / 5 + 32) + "°F" : Math.round(celsius) + "°";
         int desc = describe(code);
         return desc == 0 ? text : text + " " + ctx.getString(desc);
     }
@@ -71,7 +75,9 @@ final class Weather {
 
                 // Store the numbers; the text is built in the TV's language when shown.
                 SharedPreferences.Editor e = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit();
-                e.putInt("temp", (int) Math.round(current.getDouble("temperature_2m")))
+                double celsius = current.getDouble("temperature_2m");
+                e.putInt("temp", (int) Math.round(celsius))
+                        .putFloat("temp_c", (float) celsius)
                         .putInt("code", current.getInt("weather_code"))
                         .putLong("at", System.currentTimeMillis())
                         .remove("text")

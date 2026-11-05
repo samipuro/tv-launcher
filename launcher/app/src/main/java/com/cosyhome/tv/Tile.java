@@ -52,6 +52,8 @@ final class Tile extends FrameLayout {
     private float glow;
     private ValueAnimator glowAnim;
     private Consumer<Tile> onFocus;
+    /** The rounded, clipped frame the artwork sits in. */
+    private final FrameLayout art;
 
     Tile(Context ctx, Apps.App app, float restAlpha, boolean dockStyle) {
         super(ctx);
@@ -86,38 +88,32 @@ final class Tile extends FrameLayout {
             }
         };
         setOutlineProvider(rounded);
-        FrameLayout art = new FrameLayout(ctx);
+        art = new FrameLayout(ctx);
         art.setBackgroundColor(0xFF3A3A3C);
         art.setOutlineProvider(rounded);
         art.setClipToOutline(true);
         addView(art, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
-        // Glow colour sampled from the artwork, lifted towards white so dark banners still glow.
-        int base = averageColor(app.banner != null ? app.banner : app.icon);
-        glowPaint.setColor(blend(base, 0xFFFFFFFF, 0.7f));
-        glowPaint.setMaskFilter(new BlurMaskFilter(glowRadius, BlurMaskFilter.Blur.NORMAL));
+        // Glow colour sampled from the artwork, lifted towards white so dark banners still glow. Only dock
+        // tiles glow, and their banners are decoded up front: sampling a grid tile's deferred banner here
+        // would decode it on the main thread.
+        if (dockStyle) {
+            int base = averageColor(app.banner != null ? app.banner : app.icon);
+            glowPaint.setColor(blend(base, 0xFFFFFFFF, 0.7f));
+            glowPaint.setMaskFilter(new BlurMaskFilter(glowRadius, BlurMaskFilter.Blur.NORMAL));
+        }
 
         if (app.banner != null) {
             ImageView banner = new ImageView(ctx);
             banner.setScaleType(ImageView.ScaleType.CENTER_CROP);
             banner.setImageDrawable(app.banner);
             art.addView(banner, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+            if (app.banner instanceof Apps.LazyBanner) {
+                // A deferred banner that fails to decode falls back to the icon and the name.
+                ((Apps.LazyBanner) app.banner).setOnMissing(icon -> post(() -> showIconAndLabel(icon)));
+            }
         } else {
-            ImageView icon = new ImageView(ctx);
-            icon.setImageDrawable(app.icon);
-            LayoutParams ilp = new LayoutParams((int) (28 * d), (int) (28 * d), Gravity.CENTER);
-            ilp.bottomMargin = (int) (10 * d);
-            art.addView(icon, ilp);
-            TextView label = new TextView(ctx);
-            label.setText(app.label);
-            label.setTextColor(0xFFFFFFFF);
-            label.setTextSize(11f);
-            label.setSingleLine(true);
-            label.setGravity(Gravity.CENTER);
-            label.setTypeface(getResources().getFont(R.font.outfit));
-            LayoutParams llp = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
-            llp.bottomMargin = (int) (6 * d);
-            art.addView(label, llp);
+            showIconAndLabel(app.icon);
         }
 
         setOnClickListener(v -> launch());
@@ -136,6 +132,27 @@ final class Tile extends FrameLayout {
             animateGlow(focused ? 1f : 0f, focused ? 240 : 160);
             if (focused && onFocus != null) onFocus.accept(this);
         });
+    }
+
+    // Purpose: the tile for an app with no banner: the icon, and the name under it.
+    private void showIconAndLabel(Drawable icon) {
+        float d = getResources().getDisplayMetrics().density;
+        art.removeAllViews();
+        ImageView iconView = new ImageView(getContext());
+        iconView.setImageDrawable(icon);
+        LayoutParams ilp = new LayoutParams((int) (28 * d), (int) (28 * d), Gravity.CENTER);
+        ilp.bottomMargin = (int) (10 * d);
+        art.addView(iconView, ilp);
+        TextView label = new TextView(getContext());
+        label.setText(app.label);
+        label.setTextColor(0xFFFFFFFF);
+        label.setTextSize(11f);
+        label.setSingleLine(true);
+        label.setGravity(Gravity.CENTER);
+        label.setTypeface(getResources().getFont(R.font.outfit));
+        LayoutParams llp = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+        llp.bottomMargin = (int) (6 * d);
+        art.addView(label, llp);
     }
 
     // Purpose: fade the glow in or out.

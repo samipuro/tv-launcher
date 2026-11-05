@@ -32,7 +32,8 @@ android {
         versionCode 2
         versionName '1.0.2'
 
-        ['location.name', 'location.latitude', 'location.longitude', 'dock', 'pinned', 'hidden',
+        ['location.name', 'location.latitude', 'location.longitude', 'weather.temperature_unit',
+         'dock', 'pinned', 'hidden',
          'live_tv_package', 'usb_package', 'ambilight_action', 'app_keys'].each { key ->
             resValue 'string', key.replace('.', '_'), resString(settings.getProperty(key, ''))
         }

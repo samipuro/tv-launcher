@@ -12,6 +12,8 @@ The Android TV home screen used on this TV. It is a fork of [cosy-home-tv](https
 - **Finnish translation** (`values-fi`), and the time is formatted in the TV language's own style (14.12 in Finnish, 14:12 in English).
 - **Dock:** centred, TV first, a glow in the app's own colour on the focused tile; apps-grid tiles get a crisp border instead.
 - **Sony settings:** Live TV `com.sony.dtv.tvx`, USB `com.sony.dtv.smartmediaapp`, no Ambilight chip.
+- **Temperature unit:** `weather.temperature_unit=fahrenheit` shows °F; anything else is Celsius. The reading is stored in Celsius and converted when shown, so switching needs no new fetch.
+- **From upstream cosy-home-tv (Oct 2026):** the moon's crescent is cut out of the disc instead of painted over in sky colour; banners beyond the dock and first grid row are decoded on a background thread and cached until the app updates; tiles and input chips are only rebuilt when apps or inputs changed; the package receiver is registered once. Gradle wrapper 9.7.1.
 - Removed: the per-minute pixel shift (the TV's screensaver and panel protection handle OLED care).
 
 ## Build and install
