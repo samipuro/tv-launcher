@@ -16,6 +16,12 @@
     <string name="np_prev">Previous</string>
     <string name="np_play_pause">Play or pause</string>
     <string name="np_next">Next</string>
+    <string name="tile_add_to_dock">Add to dock</string>
+    <string name="tile_remove_from_dock">Remove from dock</string>
+    <string name="tile_app_info">App info</string>
+    <string name="tile_uninstall">Uninstall</string>
+    <string name="dock_full">The dock is full (%1$d apps). Remove an app from the dock first.</string>
+    <string name="dock_not_saved">Couldn\'t save the dock</string>
     <string name="key_service_label">Cosy Home remote buttons</string>
     <string name="key_service_description">Opens SmartTube from the remote\'s YouTube button and closes the screensaver on Down. It only reads the buttons listed in the launcher\'s settings and Down.</string>
 

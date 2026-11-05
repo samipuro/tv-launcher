@@ -79,7 +79,8 @@ When music plays in any app (Spotify, SmartTube, YouTube Music ...), a small car
 
 Settings: [launcher/cosy.properties](launcher/cosy.properties). After a change: `scripts\launcher-install.ps1`. More in [launcher/README.md](launcher/README.md).
 
-- **Dock order:** `dock=` (package names). The apps list starts with the same apps, then `pinned=`, then the rest alphabetically.
+- **Dock order:** `dock=` (package names, at most seven, TV always first). The apps list starts with the same apps, then `pinned=`, then the rest alphabetically.
+- **On the TV:** hold OK on a tile for its menu: Add to / Remove from dock, App info, Uninstall. A dock edited on the TV is kept until `dock=` changes; `scripts\backup.ps1` saves it as `launcher-dock.txt`, so it can be copied into `dock=`.
 - **Hidden tiles:** `hidden=` (apps stay installed).
 - **Location:** `location.name`, `location.latitude`, `location.longitude`.
 - **Scene:** [SceneView.java](launcher/app/src/main/java/com/cosyhome/tv/SceneView.java), with palettes per time of day and the weather effects.

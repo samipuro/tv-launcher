@@ -15,6 +15,12 @@
     <string name="np_prev">Edellinen</string>
     <string name="np_play_pause">Toista tai keskeytä</string>
     <string name="np_next">Seuraava</string>
+    <string name="tile_add_to_dock">Lisää telakkaan</string>
+    <string name="tile_remove_from_dock">Poista telakasta</string>
+    <string name="tile_app_info">Sovelluksen tiedot</string>
+    <string name="tile_uninstall">Poista asennus</string>
+    <string name="dock_full">Telakka on täynnä (%1$d sovellusta). Poista ensin jokin sovellus telakasta.</string>
+    <string name="dock_not_saved">Telakan tallennus epäonnistui</string>
     <string name="key_service_label">Cosy Home -kaukosäätimen painikkeet</string>
     <string name="key_service_description">Avaa SmartTuben kaukosäätimen YouTube-painikkeesta ja sulkee näytönsäästäjän alas-painikkeella. Lukee vain käynnistimen asetuksissa luetellut painikkeet ja alas-painikkeen.</string>
 

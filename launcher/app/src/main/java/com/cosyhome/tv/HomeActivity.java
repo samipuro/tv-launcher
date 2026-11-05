@@ -6,7 +6,9 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.ChangedPackages;
+import android.content.pm.PackageManager;
 import android.media.tv.TvContract;
 import android.media.tv.TvInputInfo;
 import android.media.tv.TvInputManager;
@@ -17,13 +19,18 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.format.DateFormat;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
+import android.widget.PopupWindow;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.FileDescriptor;
+import java.io.PrintWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -77,7 +84,8 @@ public class HomeActivity extends Activity implements SceneView.Listener {
                 }
             };
 
-    private List<String> dockApps, pinnedApps;
+    /** The dock shown: as edited on the TV (Dock.java), else configuredDock. */
+    private List<String> dockApps, configuredDock, pinnedApps;
     private Set<String> hiddenApps;
     private String liveTvPkg, usbPkg, ambilightAction, place;
     private double lat, lon;
@@ -141,10 +149,11 @@ public class HomeActivity extends Activity implements SceneView.Listener {
         density = getResources().getDisplayMetrics().density;
 
         // Built from cosy.defaults.properties and cosy.properties, see app/build.gradle.
-        dockApps = list(R.string.dock);
+        configuredDock = list(R.string.dock);
         pinnedApps = list(R.string.pinned);
         hiddenApps = new HashSet<>(list(R.string.hidden));
         liveTvPkg = getString(R.string.live_tv_package);
+        dockApps = Dock.load(this, configuredDock, liveTvPkg);
         usbPkg = getString(R.string.usb_package);
         ambilightAction = getString(R.string.ambilight_action);
         place = getString(R.string.location_name);
@@ -427,6 +436,8 @@ public class HomeActivity extends Activity implements SceneView.Listener {
     protected void onPause() {
         super.onPause();
         resumed = false;
+        cancelHoldOk();
+        if (tileMenu != null) tileMenu.dismiss();
         handler.removeCallbacks(minuteTick);
         handler.removeCallbacks(weatherTick);
         scene.setRunning(false);
@@ -642,6 +653,224 @@ public class HomeActivity extends Activity implements SceneView.Listener {
             t.setPriority(Thread.MIN_PRIORITY);
             t.start();
         });
+    }
+
+    // ---- hold OK: the tile menu ---------------------------------------------------------------------
+    // As in cleanyourtv: View's own long click misses on some remotes (an IR remote that sends its repeats as
+    // separate presses, a Bluetooth one whose repeats arrive late), so the hold is timed here. OK down on a
+    // tile and still down (or still repeating) after HOLD_OK_MS opens the menu; the UP that follows is eaten so
+    // the app does not open as well.
+
+    private static final long HOLD_OK_MS = 550;
+    private long holdOkDown = -1;
+    private Tile holdOkTile;
+    private boolean holdOkFired;
+    private final Runnable holdOkTimer = this::fireHoldOk;
+    private PopupWindow tileMenu;
+
+    private static boolean isOkKey(int code) {
+        return code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
+                || code == KeyEvent.KEYCODE_NUMPAD_ENTER || code == KeyEvent.KEYCODE_BUTTON_A;
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (holdOk(event)) return true;
+        return super.dispatchKeyEvent(event);
+    }
+
+    // Purpose: true when the event belongs to a hold that opened the tile menu and must not reach the tile.
+    private boolean holdOk(KeyEvent event) {
+        if (!isOkKey(event.getKeyCode())) return false;
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            if (event.getRepeatCount() == 0) {
+                holdOkFired = false;
+                handler.removeCallbacks(holdOkTimer);
+                View f = getCurrentFocus();
+                holdOkTile = tileMenu == null && f instanceof Tile ? (Tile) f : null;
+                if (holdOkTile == null) {
+                    holdOkDown = -1;
+                    return false;
+                }
+                holdOkDown = event.getDownTime();
+                handler.postDelayed(holdOkTimer, HOLD_OK_MS);
+                return false;
+            }
+            if (holdOkFired) return true;
+            if (holdOkDown >= 0 && event.getEventTime() - holdOkDown >= HOLD_OK_MS) {
+                fireHoldOk();
+                return true;
+            }
+            return false;
+        }
+        // ACTION_UP
+        handler.removeCallbacks(holdOkTimer);
+        holdOkDown = -1;
+        holdOkTile = null;
+        if (holdOkFired) {
+            holdOkFired = false;
+            View f = getCurrentFocus();
+            if (f != null) f.setPressed(false);
+            return true;
+        }
+        return false;
+    }
+
+    // Purpose: stop timing a held OK when Home is paused, so the menu cannot open behind an app; its late UP is still eaten.
+    private void cancelHoldOk() {
+        handler.removeCallbacks(holdOkTimer);
+        if (holdOkDown >= 0) holdOkFired = true;
+        holdOkDown = -1;
+        holdOkTile = null;
+    }
+
+    private void fireHoldOk() {
+        handler.removeCallbacks(holdOkTimer);
+        if (holdOkDown < 0 || holdOkFired) return;
+        holdOkFired = true;
+        // Tiles may have been rebuilt during the hold: only the same tile, still focused, gets the menu.
+        Tile tile = holdOkTile;
+        if (tile == null || tile != getCurrentFocus() || !tile.isAttachedToWindow()) return;
+        tile.setPressed(false);
+        showTileMenu(tile);
+    }
+
+    /**
+     * Hold OK on a tile: a glass menu next to it. In the dock: Remove from dock (not for Live TV, which stays
+     * first) and App info. In the apps grid: Add to or Remove from dock, App info, and Uninstall for apps the
+     * owner installed. Rows the TV cannot do are left out.
+     */
+    private void showTileMenu(Tile tile) {
+        if (tileMenu != null) return;
+        String pkg = tile.app.pkg;
+        boolean docked = dockApps.contains(pkg);
+        boolean pinned = pkg.equals(liveTvPkg);
+        boolean inGrid = tile.getParent() == grid;
+
+        GlassPanel panel = new GlassPanel(this, null);
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        rows.setPadding(dp(6), dp(6), dp(6), dp(6));
+        panel.addView(rows);
+        PopupWindow popup = new PopupWindow(panel, dp(220), ViewGroup.LayoutParams.WRAP_CONTENT, true);
+        popup.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));   // needed for Back to dismiss
+        popup.setOutsideTouchable(true);
+        popup.setAnimationStyle(0);
+        popup.setOnDismissListener(() -> {
+            if (tileMenu == popup) tileMenu = null;
+            if (tile.isAttachedToWindow()) tile.requestFocus();
+        });
+        tileMenu = popup;
+
+        if (docked && !pinned) {
+            addMenuRow(rows, popup, R.string.tile_remove_from_dock, true, () -> editDock(pkg, false));
+        } else if (!docked) {
+            boolean room = dock.getChildCount() < Dock.MAX;
+            addMenuRow(rows, popup, R.string.tile_add_to_dock, room, () -> {
+                if (room) editDock(pkg, true);
+                else Toast.makeText(this, getString(R.string.dock_full, Dock.MAX), Toast.LENGTH_LONG).show();
+            });
+        }
+        // Some firmware has no App info page; a row that only says "can't open" helps nobody.
+        Intent info = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + pkg));
+        if (getPackageManager().resolveActivity(info, 0) != null) {
+            addMenuRow(rows, popup, R.string.tile_app_info, true, () -> open(info));
+        }
+        // Only apps the owner installed: preinstalled ones cannot be uninstalled, and Android asks to confirm.
+        if (inGrid && userInstalled(pkg)) {
+            Intent delete = new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + pkg));
+            addMenuRow(rows, popup, R.string.tile_uninstall, true, () -> open(delete));
+        }
+        if (rows.getChildCount() == 0) {
+            tileMenu = null;
+            return;
+        }
+
+        // Below the tile when it fits (the apps grid), above it otherwise (the dock, near the bottom).
+        panel.measure(View.MeasureSpec.makeMeasureSpec(dp(220), View.MeasureSpec.EXACTLY), View.MeasureSpec.UNSPECIFIED);
+        int[] at = new int[2];
+        tile.getLocationOnScreen(at);
+        int gap = dp(14), height = panel.getMeasuredHeight();
+        int screenW = getWindow().getDecorView().getWidth(), screenH = getWindow().getDecorView().getHeight();
+        int x = Math.max(dp(16), Math.min(at[0], screenW - dp(236)));
+        int y = at[1] + tile.getHeight() + gap + height <= screenH ? at[1] + tile.getHeight() + gap : at[1] - gap - height;
+        panel.setAlpha(0f);
+        popup.showAtLocation(getWindow().getDecorView(), Gravity.NO_GRAVITY, x, Math.max(0, y));
+        panel.animate().alpha(1f).setDuration(160).start();
+        rows.getChildAt(0).requestFocus();
+    }
+
+    private void addMenuRow(LinearLayout rows, PopupWindow popup, int title, boolean enabled, Runnable action) {
+        TextView row = new TextView(this, null, 0, R.style.MenuRow);
+        row.setText(title);
+        if (!enabled) row.setAlpha(0.5f);
+        row.setOnClickListener(v -> {
+            popup.dismiss();
+            action.run();
+        });
+        // The OK-up that follows opening the menu must not activate its first row: act only on an UP whose DOWN was seen here.
+        final boolean[] pressed = {false};
+        row.setOnKeyListener((v, code, event) -> {
+            if (!isOkKey(code)) return false;
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                if (event.getRepeatCount() == 0) pressed[0] = true;
+                return true;
+            }
+            boolean activate = pressed[0];
+            pressed[0] = false;
+            if (activate) {
+                popup.dismiss();
+                action.run();
+            }
+            return true;
+        });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40));
+        if (rows.getChildCount() > 0) lp.topMargin = dp(4);
+        rows.addView(row, lp);
+    }
+
+    // Purpose: add an app to the end of the dock or take it off, save it, rebuild the tiles and keep focus on that app.
+    private void editDock(String pkg, boolean add) {
+        // Docked apps that are no longer installed have no tile; they drop out of the saved dock here.
+        List<String> next = new ArrayList<>();
+        for (int i = 0; i < dock.getChildCount(); i++) next.add(((Tile) dock.getChildAt(i)).app.pkg);
+        int index = next.indexOf(pkg);
+        if (add) next.add(pkg);
+        else next.remove(pkg);
+        next = Dock.arrange(next, liveTvPkg);
+        if (!Dock.save(this, configuredDock, next)) {
+            Toast.makeText(this, R.string.dock_not_saved, Toast.LENGTH_LONG).show();
+            return;
+        }
+        dockApps = next;
+        loadApps();
+        if (appsOpen) {
+            for (int i = 0; i < grid.getChildCount(); i++) {
+                if (((Tile) grid.getChildAt(i)).app.pkg.equals(pkg)) {
+                    lastGrid = i;
+                    break;
+                }
+            }
+        } else {
+            lastDock = Math.max(0, index);
+        }
+        restoreFocus();
+    }
+
+    private boolean userInstalled(String pkg) {
+        try {
+            ApplicationInfo ai = getPackageManager().getApplicationInfo(pkg, 0);
+            return (ai.flags & (ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) == 0;
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        }
+    }
+
+    /** `adb shell dumpsys activity com.cosyhome.tv/.HomeActivity` prints the dock, so a backup can keep it. */
+    @Override
+    public void dump(String prefix, FileDescriptor fd, PrintWriter writer, String[] args) {
+        super.dump(prefix, fd, writer, args);
+        writer.println(prefix + "cosy dock=" + String.join(",", dockApps));
     }
 
     private void focusDock(int index) {

@@ -6,6 +6,12 @@
         <item name="android:windowAnimationStyle">@null</item>
     </style>
 
+    <!-- A row of the tile menu: the chip's look, full width and left-aligned. -->
+    <style name="MenuRow" parent="Chip">
+        <item name="android:gravity">center_vertical|start</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
     <!-- Glass chip: translucent at rest, solid white with dark text when focused. -->
     <style name="Chip">
         <item name="android:layout_width">wrap_content</item>

@@ -35,6 +35,7 @@ $items = [ordered]@{
     'storage.txt'              = 'df -h /data'
     'memory.txt'               = 'cat /proc/meminfo'
     'users.txt'                = 'pm list users'
+    'launcher-dock.txt'        = "dumpsys activity com.cosyhome.tv/.HomeActivity | grep 'cosy dock='"
 }
 $utf8 = New-Object System.Text.UTF8Encoding $false
 foreach ($file in $items.Keys) {

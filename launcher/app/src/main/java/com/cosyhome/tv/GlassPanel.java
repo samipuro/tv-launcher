@@ -48,8 +48,11 @@ public class GlassPanel extends FrameLayout {
         box.set(0, 0, getWidth(), getHeight());
         float r = Math.min(radius, getHeight() / 2f);
         if (source != null) {
-            getLocationInWindow(at);
-            screen.set(-at[0], -at[1], -at[0] + getRootView().getWidth(), -at[1] + getRootView().getHeight());
+            // On screen, not in the window: the tile menu is a panel in a popup window of its own.
+            getLocationOnScreen(at);
+            // The blurred scene spans the whole screen, which a popup's root view does not.
+            android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+            screen.set(-at[0], -at[1], -at[0] + dm.widthPixels, -at[1] + dm.heightPixels);
             clip.reset();
             clip.addRoundRect(box, r, r, Path.Direction.CW);
             canvas.save();

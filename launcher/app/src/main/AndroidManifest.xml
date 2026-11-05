@@ -10,6 +10,9 @@
     <!-- Network status icon (ethernet / Wi-Fi / offline). -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Uninstall in the tile menu: Android shows its own confirmation. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
     <!-- Android 11+ package visibility: the apps shown as tiles, and the Philips screens the chips open. -->
     <queries>
         <intent>
@@ -21,6 +24,10 @@
         </intent>
         <intent>
             <action android:name="android.settings.SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.APPLICATION_DETAILS_SETTINGS" />
+            <data android:scheme="package" />
         </intent>
     </queries>
 
